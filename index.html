@@ -67,7 +67,8 @@ if(!S||!Array.isArray(S.items))S=DEF();
 (()=>{const KC={'푸시업':.5,'턱걸이':1,'런지':.4};S.items.forEach(x=>{if(x.kind==='sum'&&x.kcal===undefined)x.kcal=KC[x.name]||0;if(x.name==='런지'&&x.lr===undefined)x.lr=true;const HD={'푸시업':1,'런지':2,'턱걸이':2};if(x.kind==='sum'&&x.met===undefined&&HD[x.name]!==undefined){x.met=5;x.hold=HD[x.name]}});
 if(!S.items.some(x=>x.id==='w1'||x.name==='체중'))S.items.unshift({id:'w1',name:'체중',unit:'kg',kind:'avg'});
 if(!S.mig2){S.mig2=1;if(!S.items.some(x=>x.name==='걷기'))S.items.push({id:'w2',name:'걷기',unit:'분',kind:'sum',cd:'walk'})}
-if(!S.mig3){S.mig3=1;S.items.forEach(x=>{if(x.id==='w2'&&x.tm&&!x.cd){delete x.tm;x.cd='walk';x.met=0}})}save()})();
+if(!S.mig3){S.mig3=1;S.items.forEach(x=>{if(x.id==='w2'&&x.tm&&!x.cd){delete x.tm;x.cd='walk';x.met=0}})}
+S.items.forEach(x=>{if(x.kind==='sum'&&!x.unit)x.unit=(x.cd||x.tm)?'분':'회'});save()})();
 const fmtT=v=>{const t=Math.round(v*60),m=Math.floor(t/60),c=t%60;return(m?m+'분':'')+(c||!m?(m?' ':'')+c+'초':'')};
 const cdMet=(it,kmh)=>((it.cd==='run'?.2:.1)*(kmh*1000/60)+3.5)/3.5;
 function cdSumm(k,it,kc){const e=ents(k,it.id),H=ents(k,it.id+'#');if(!e.length)return'';
@@ -123,10 +124,43 @@ function grView(){
  if(gItem!=='kcal'&&!S.items.find(x=>x.id===gItem))gItem=S.items[0]&&S.items[0].id;
  if(!S.items.length)return'<p class="mu">먼저 종목을 추가하세요.</p>';
  const M={day:'일별',week:'주별',month:'월별'};
- const R={day:'최근 14일 (선택한 날짜 기준)',week:'최근 12주 (월요일 시작)',month:'최근 12개월'};
- return`<h2>종목</h2><div class="pick">${S.items.map(x=>`<button data-a="gi" data-i="${x.id}" class="${x.id===gItem?'on':''}">${esc(x.name)}</button>`).join('')}<button data-a="gi" data-i="kcal" class="${gItem==='kcal'?'on':''}">🔥 소모 칼로리</button></div>
- <div class="seg">${Object.keys(M).map(m=>`<button data-a="gm" data-m="${m}" class="${m===gMode?'on':''}">${M[m]}</button>`).join('')}</div>
- <div class="card"><div class="ch"><b>${M[gMode]} 그래프</b><span class="sm">${R[gMode]}</span></div><div id="chart"></div><div class="stats" id="stats"></div></div>`}
+ const R={day:'최근 14일 (기록 탭에서 고른 날짜 기준)',week:'최근 12주 (월요일 시작)',month:'최근 12개월'};
+ return`<div class="seg">${Object.keys(M).map(m=>`<button data-a="gm" data-m="${m}" class="${m===gMode?'on':''}">${M[m]}</button>`).join('')}</div><div class="sm" style="margin:0 2px 10px">${R[gMode]}</div>
+ <div class="card"><div class="ch"><b>전체 한눈에</b><span class="sm">종목을 눌러 켜고 끄기</span></div><div class="pick" id="ovp" style="margin:10px 0"></div><div id="ov"></div><div class="sm" id="ovn" style="margin-top:6px"></div></div>
+ <h2>종목별 자세히</h2><div class="pick">${S.items.map(x=>`<button data-a="gi" data-i="${x.id}" class="${x.id===gItem?'on':''}">${esc(x.name)}</button>`).join('')}<button data-a="gi" data-i="kcal" class="${gItem==='kcal'?'on':''}">🔥 소모 칼로리</button></div>
+ <div class="card" style="margin-top:10px"><div class="ch"><b>${M[gMode]} 그래프</b></div><div id="chart"></div><div class="stats" id="stats"></div></div>`}
+
+function seriesOf(it,N){const out=[];
+ for(let i=N-1;i>=0;i--){const b=bucket(gMode,i),e=b.keys.flatMap(k=>it.id==='kcal'?[kcalDay(k)]:allEnts(k,it));let v=null;
+  if(it.kind==='bp')v=e.length?e.reduce((a,x)=>a+x[0],0)/e.length:null;
+  else if(it.kind==='sum')v=e.reduce((a,x)=>a+x,0);
+  else v=e.length?e.reduce((a,x)=>a+x,0)/e.length:null;
+  out.push({l:b.label,v})}
+ return out}
+
+function drawOverview(){
+ const N=gMode==='day'?14:12,PAL=['#e5484d','#2f6fed','#2fa36b','#f5a524','#8e4ec6','#0fa5b7','#e5559a','#7c8a3a','#e26f2d','#6b7280'],hide=S.hide||{};
+ const D=[...S.items,{id:'kcal',name:'🔥 소모 칼로리',kind:'sum'}].map((it,i)=>{
+  const sr=seriesOf(it,N),vs=sr.map(p=>p.v).filter(v=>v!=null&&(it.kind!=='sum'||v>0));let ch='';
+  if(vs.length>1&&vs[0]>0){const p=(vs[vs.length-1]-vs[0])/vs[0]*100;ch=(p>=0?'▲':'▼')+Math.abs(Math.round(p))+'%'}
+  return{it,sr,ch,c:PAL[i%PAL.length]}});
+ $('#ovp').innerHTML=D.map(o=>`<button data-a="tg" data-i="${o.it.id}" style="${hide[o.it.id]?'opacity:.4':''}"><span style="color:${o.c}">●</span> ${esc(o.it.name)}${o.ch?` <small class="sm">${o.ch}</small>`:''}</button>`).join('');
+ const vis=D.filter(o=>!hide[o.it.id]&&o.sr.some(p=>p.v!=null&&(o.it.kind!=='sum'||p.v>0)));
+ if(!vis.length){$('#ov').innerHTML='<p class="mu" style="text-align:center;padding:30px 0">표시할 기록이 없어요</p>';$('#ovn').textContent='';return}
+ const W=340,H=210,L=34,R=8,T=16,Bt=24,pw=W-L-R,ph=H-T-Bt,X=i=>L+pw*(i+.5)/N,single=vis.length===1;
+ let s=`<svg viewBox="0 0 ${W} ${H}">`+[0,.5,1].map(f=>`<line class="gl" x1="${L}" x2="${W-R}" y1="${T+ph*f}" y2="${T+ph*f}"/>`).join('');
+ let lo,hi;
+ if(single){const vs=vis[0].sr.map(p=>p.v).filter(v=>v!=null);lo=Math.min(...vs);hi=Math.max(...vs);const p=(hi-lo)*.25||hi*.1||1;lo=Math.max(0,lo-p);hi+=p;
+  [0,.5,1].forEach(f=>{s+=`<text x="${L-4}" y="${T+ph*(1-f)+3}" text-anchor="end">${fmt(lo+(hi-lo)*f)}</text>`})}
+ vis[0].sr.forEach((p,i)=>{if(gMode!=='day'||(N-1-i)%2===0)s+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle">${p.l}</text>`});
+ vis.forEach(o=>{const vs=o.sr.map(p=>p.v).filter(v=>v!=null),a=Math.min(...vs),b=Math.max(...vs);
+  const Y=v=>single?T+ph*(1-(v-lo)/(hi-lo)):T+ph*(1-(b===a?.5:.06+.88*(v-a)/(b-a)));
+  let d='',dots='';
+  o.sr.forEach((p,i)=>{if(p.v==null)return;const q=o.sr[i-1];d+=(d&&q&&q.v!=null?'L':'M')+X(i).toFixed(1)+' '+Y(p.v).toFixed(1);
+   dots+=`<circle cx="${X(i)}" cy="${Y(p.v)}" r="2.6" fill="${o.c}"/>`+(single?`<text class="v" x="${X(i)}" y="${Y(p.v)-7}" text-anchor="middle">${o.it.unit==='kg'?p.v.toFixed(1):(o.it.id==='kcal'?Math.round(p.v):fmt(p.v))}</text>`:'')});
+  s+=`<path d="${d}" fill="none" stroke="${o.c}" stroke-width="2" stroke-linejoin="round"/>${dots}`});
+ $('#ov').innerHTML=s+'</svg>';
+ $('#ovn').textContent=(single?'실제 값 기준으로 보여줘요. ':'종목마다 자기 최저~최고 범위에 맞춰 그려서 오르내림을 비교해요. 실제 숫자는 한 종목만 남기면 보여요. ')+'▲▼는 이 기간 첫 기록 대비 변화예요.'}
 
 function drawChart(){
  const it=gItem==='kcal'?{id:'kcal',name:'소모 칼로리',unit:'kcal',kind:'sum'}:S.items.find(x=>x.id===gItem);if(!it)return;
@@ -164,18 +198,20 @@ function drawChart(){
  else{const a=A.filter(v=>v!=null);st=[['평균',fv(it,a.reduce((x,y)=>x+y,0)/a.length)+u],['최저',fv(it,Math.min(...a))+u],['최고',fv(it,Math.max(...a))+u]]}
  $('#stats').innerHTML=st.map(x=>`<div><b>${x[1]}</b><span>${x[0]}</span></div>`).join('')}
 
+let ad={t:'rep',n:'',u:'',m:5,h:1,k:'',lr:false};
+function capAd(){const g=i=>document.querySelector('#'+i);if(g('nn'))ad.n=g('nn').value;if(g('nu'))ad.u=g('nu').value;if(g('nc'))ad.k=g('nc').value;if(g('nm'))ad.m=+g('nm').value;if(g('nh'))ad.h=+g('nh').value;if(g('nl'))ad.lr=g('nl').checked}
+function addForm(){const t=ad.t;
+ const D={rep:'푸시업·턱걸이·런지처럼 횟수를 기록해요. 강도와 자세 유지 시간으로 칼로리를 계산해요.',walk:'시간(분·초)과 평균 속도(km/h)를 기록해요. 칼로리는 속도로 자동 계산돼요.',run:'시간(분·초)과 평균 속도(km/h)를 기록해요. 칼로리는 속도로 자동 계산돼요.',avg:'체중·심박처럼 재는 값을 기록해요. 그래프는 평균으로 보여요.',oth:'그 밖의 운동이에요. 1단위당 소모 kcal를 직접 적으면 칼로리에 반영돼요.'};
+ const PH={rep:'이름 (예: 스쿼트)',walk:'이름 (비우면 걷기)',run:'이름 (비우면 러닝)',avg:'이름 (예: 심박, 허리둘레)',oth:'이름'};
+ let f=`<input id="nn" placeholder="${PH[t]}" value="${esc(ad.n)}">`;
+ if(t==='rep')f+=`<input id="nu" placeholder="단위 (비우면 회)" value="${esc(ad.u)}"><div class="row"><span class="sm" style="width:70px">강도</span><select id="nm">${METS.map(m=>`<option value="${m[0]}"${m[0]===ad.m?' selected':''}>${m[1]}</option>`).join('')}</select></div><div class="row"><span class="sm" style="width:70px">자세 유지</span><select id="nh">${HS.map(h=>`<option value="${h}"${h===ad.h?' selected':''}>${h}초</option>`).join('')}</select></div>${ad.m===0?`<input id="nc" inputmode="decimal" placeholder="1${esc(ad.u||'회')}당 소모 kcal" value="${esc(ad.k)}">`:''}<label style="display:flex;align-items:center;gap:8px;font-size:15px"><input type="checkbox" id="nl" ${ad.lr?'checked':''} style="width:20px;height:20px;padding:0"> 좌/우 나눠서 기록</label>`;
+ if(t==='avg'||t==='oth')f+=`<input id="nu" placeholder="단위 (예: kg, bpm, 분)" value="${esc(ad.u)}">`;
+ if(t==='oth')f+=`<input id="nc" inputmode="decimal" placeholder="1단위당 소모 kcal (선택)" value="${esc(ad.k)}">`;
+ return`<h2>종목 추가</h2><div class="card"><div style="display:grid;gap:10px"><div class="pick">${[['rep','횟수형'],['walk','걷기'],['run','러닝'],['avg','측정값'],['oth','기타']].map(x=>`<button data-a="atype" data-t="${x[0]}" class="${t===x[0]?'on':''}">${x[1]}</button>`).join('')}</div><div class="sm">${D[t]}</div>${f}<button class="p" data-a="additem">종목 추가</button></div></div>`}
 function setView(){
  let h=`<h2>내 종목</h2><div class="card">`;
- h+=S.items.length?S.items.map(x=>`<div class="item"><div><b>${esc(x.name)}</b><div class="sm">${KIND[x.kind]}${x.unit?' · 단위 '+esc(x.unit):''}</div>${x.cd?`<div class="sm" style="margin-top:6px">유산소(${x.cd==='run'?'러닝':'걷기'}) · 속도·시간 입력, 칼로리 자동 계산</div>`:x.kind==='sum'?`<div class="sm" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">강도 <select data-met="${x.id}" style="width:auto;padding:5px 8px">${(x.tm?METT:METS).map(m=>`<option value="${m[0]}"${m[0]===(x.met||0)?' selected':''}>${m[1]}</option>`).join('')}</select>${x.met>0?(x.tm?'':` 기본 유지 <select data-h="${x.id}" style="width:auto;padding:5px 8px">${HS.map(h=>`<option value="${h}"${h===(x.hold||0)?' selected':''}>${h}초</option>`).join('')}</select>`):` 1${esc(x.unit)}당 <input data-k="${x.id}" inputmode="decimal" value="${x.kcal||''}" placeholder="0" style="width:70px;padding:6px 8px"> kcal`}</div>${x.tm?'':`<label class="sm" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" data-lr="${x.id}" ${x.lr?'checked':''} style="width:18px;height:18px;padding:0"> 좌/우 나눠서 기록</label>`}`:''}</div><button class="d" data-a="delitem" data-i="${x.id}">${pend===x.id?'정말 삭제? (기록도 삭제)':'삭제'}</button></div>`).join(''):'<span class="mu">종목이 없습니다.</span>';
- h+=`</div><h2>종목 추가</h2><div class="card"><div style="display:grid;gap:8px">
- <input id="nn" placeholder="이름 (예: 스쿼트, 체중, 걷기)">
- <div class="row"><input id="nu" placeholder="단위 (회, 분, km, kg)"><select id="nk"><option value="sum">누적(합계)</option><option value="avg">측정(평균)</option><option value="walk">유산소 · 걷기 (속도·시간)</option><option value="run">유산소 · 러닝 (속도·시간)</option><option value="min">시간(분) 운동 · 기타 (자전거 등)</option></select></div>
- <div id="nx" style="display:grid;gap:8px"><div class="sm">횟수형 운동(푸시업 등)은 강도와 유지 시간을, 걷기·러닝 같은 시간 운동은 종류를 '시간(분) 운동'으로 하고 활동을 고르면 분만 입력해도 칼로리가 자동 계산돼요. 'kcal 직접 입력'은 1단위당 kcal를 직접 적을 때만 쓰세요.</div>
- <div class="row"><select id="nm">${METS.map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('')}</select><select id="nh">${HS.map(h=>`<option value="${h}">유지 ${h}초</option>`).join('')}</select></div>
- <input id="nc" inputmode="decimal" placeholder="1단위당 소모 kcal (직접 입력일 때)">
- <label style="display:flex;align-items:center;gap:8px;font-size:15px"><input type="checkbox" id="nl" style="width:20px;height:20px;padding:0"> 좌/우 나눠서 기록 (런지 등, 누적 종목)</label></div>
- <button class="p" data-a="additem">종목 추가</button></div>
- <p class="sm" style="margin:10px 0 0">누적: 여러 번 입력한 값을 더해서 보여줘요 (푸시업 등). 측정: 평균으로 보여줘요 (체중, 심박 등). 혈압·체중은 기본 종목에 있어요. 소모 칼로리(추정): 강도를 고른 종목은 MET × 체중 × 시간(1회 = 움직임 2초 + 유지 시간)으로, 'kcal 직접 입력' 종목은 1단위당 kcal × 기록량으로 계산해요. 어디까지나 대략적인 값이에요.</p></div>
+ h+=S.items.length?S.items.map(x=>`<div class="item"><div><b>${esc(x.name)}</b><div class="sm">${x.cd?'유산소':KIND[x.kind]}${x.kind==='bp'||x.cd?(x.unit?' · 단위 '+esc(x.unit):''):` · 단위 <input data-u="${x.id}" value="${esc(x.unit)}" style="width:64px;padding:3px 8px;font-size:14px">`}</div>${x.cd?`<div class="sm" style="margin-top:6px">유산소(${x.cd==='run'?'러닝':'걷기'}) · 속도·시간 입력, 칼로리 자동 계산</div>`:x.kind==='sum'?`<div class="sm" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">강도 <select data-met="${x.id}" style="width:auto;padding:5px 8px">${(x.tm?METT:METS).map(m=>`<option value="${m[0]}"${m[0]===(x.met||0)?' selected':''}>${m[1]}</option>`).join('')}</select>${x.met>0?(x.tm?'':` 기본 유지 <select data-h="${x.id}" style="width:auto;padding:5px 8px">${HS.map(h=>`<option value="${h}"${h===(x.hold||0)?' selected':''}>${h}초</option>`).join('')}</select>`):` 1${esc(x.unit)}당 <input data-k="${x.id}" inputmode="decimal" value="${x.kcal||''}" placeholder="0" style="width:70px;padding:6px 8px"> kcal`}</div>${x.tm?'':`<label class="sm" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" data-lr="${x.id}" ${x.lr?'checked':''} style="width:18px;height:18px;padding:0"> 좌/우 나눠서 기록</label>`}`:''}</div><button class="d" data-a="delitem" data-i="${x.id}">${pend===x.id?'정말 삭제? (기록도 삭제)':'삭제'}</button></div>`).join(''):'<span class="mu">종목이 없습니다.</span>';
+ h+=`</div>${addForm()}
  <h2>백업 / 복원</h2><div class="card"><p class="sm" style="margin:0 0 8px">기록은 이 폰의 브라우저에 저장돼요. 브라우저 데이터를 지우거나 폰을 바꾸기 전에 백업해 두세요.</p>
  <textarea id="bk" placeholder="백업 텍스트가 여기에 나타나요. 복원할 땐 여기에 붙여넣으세요."></textarea>
  <div class="row" style="margin-top:8px"><button class="g" data-a="export">백업 만들기·복사</button><button class="g" data-a="restore">붙여넣은 내용 복원</button></div></div>`;
@@ -184,7 +220,7 @@ function setView(){
 function render(){
  $('#app').innerHTML=tab==='rec'?recView():tab==='gr'?grView():setView();
  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
- if(tab==='gr'&&S.items.length)drawChart()}
+ if(tab==='gr'&&S.items.length){drawOverview();drawChart()}}
 
 function addEntry(id,sd){sd=sd||'';
  const it=S.items.find(x=>x.id===id),bp=it.kind==='bp',i0=$('#in-'+id+sd+'-0'),i1=bp&&$('#in-'+id+'-1');
@@ -207,8 +243,13 @@ document.addEventListener('click',e=>{
  else if(a==='add')addEntry(id,b.dataset.s);
  else if(a==='del'){const k=dk(date);S.logs[k][id].splice(+b.dataset.n,1);if(S.logs[k][id+'#'])S.logs[k][id+'#'].splice(+b.dataset.n,1);save();render()}
  else if(a==='gi'){gItem=id;render()}else if(a==='gm'){gMode=b.dataset.m;render()}
- else if(a==='additem'){const n=$('#nn').value.trim();if(!n)return toast('종목 이름을 입력하세요');
-  const kd=$('#nk').value,sm=kd!=='avg',cdm=kd==='walk'||kd==='run';S.items.push({id:'i'+Date.now().toString(36),name:n,unit:$('#nu').value.trim()||((kd==='min'||cdm)?'분':''),kind:sm?'sum':'avg',tm:kd==='min',cd:cdm?kd:undefined,kcal:sm&&!cdm?(parseFloat($('#nc').value)||0):0,lr:kd==='sum'&&$('#nl').checked,met:sm&&!cdm?(+$('#nm').value||0):0,hold:+$('#nh').value||0});save();toast('추가했어요');render()}
+ else if(a==='tg'){S.hide=S.hide||{};S.hide[id]=!S.hide[id];save();render()}
+ else if(a==='atype'){capAd();ad.t=b.dataset.t;render()}
+ else if(a==='additem'){capAd();const t=ad.t,cd=t==='walk'||t==='run';let n=ad.n.trim();if(!n&&cd)n=t==='run'?'러닝':'걷기';if(!n)return toast('종목 이름을 입력하세요');
+  let u=ad.u.trim();if(cd)u='분';else if(t==='rep')u=u||'회';else if(!u)return toast('단위를 입력하세요');
+  const it={id:'i'+Date.now().toString(36),name:n,unit:u,kind:t==='avg'?'avg':'sum'};
+  if(cd)it.cd=t;else if(t==='rep'){it.met=ad.m;it.hold=ad.h;it.kcal=ad.m?0:(parseFloat(ad.k)||0);it.lr=ad.lr}else if(t==='oth')it.kcal=parseFloat(ad.k)||0;
+  S.items.push(it);ad={t:t,n:'',u:'',m:5,h:1,k:'',lr:false};save();toast('추가했어요');render()}
  else if(a==='delitem'){if(pend!==id){pend=id;render();return}
   S.items=S.items.filter(x=>x.id!==id);Object.values(S.logs).forEach(d=>['','L','R'].forEach(x=>{delete d[id+x];delete d[id+x+'#']}));pend=null;save();render()}
  else if(a==='export'){const ta=$('#bk');ta.value=JSON.stringify(S);ta.select();
@@ -216,7 +257,8 @@ document.addEventListener('click',e=>{
  else if(a==='restore'){try{const d=JSON.parse($('#bk').value);if(!Array.isArray(d.items)||typeof d.logs!=='object')throw 0;
   if(pend!=='r'){pend='r';return toast('현재 기록을 덮어씁니다. 한 번 더 누르면 복원해요')}
   S=d;pend=null;save();toast('복원 완료');render()}catch(x){toast('올바른 백업 텍스트가 아니에요')}}});
-document.addEventListener('change',e=>{if(e.target.id==='nk'){const v=e.target.value;$('#nx').style.display=(v==='walk'||v==='run')?'none':'grid';$('#nm').innerHTML=(v==='min'?METT:METS).map(m=>`<option value="${m[0]}">${m[1]}</option>`).join('');return}
+document.addEventListener('change',e=>{if(e.target.id==='nm'){capAd();render();return}
+ if(e.target.dataset.u!==undefined){const it=S.items.find(x=>x.id===e.target.dataset.u);it.unit=e.target.value.trim()||(it.kind==='sum'?'회':'');save();render();return}
  const kk=e.target.dataset.k,lk=e.target.dataset.lr,dm=e.target.dataset.met,dh=e.target.dataset.h;
  if(dm!==undefined||dh!==undefined){const it=S.items.find(x=>x.id===(dm!==undefined?dm:dh));if(dm!==undefined)it.met=+e.target.value;else it.hold=+e.target.value;save();render();return}
  if(lk){S.items.find(x=>x.id===lk).lr=e.target.checked;save();render();return}

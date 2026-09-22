@@ -129,7 +129,7 @@ function grView(){
  return`<div class="seg">${Object.keys(M).map(m=>`<button data-a="gm" data-m="${m}" class="${m===gMode?'on':''}">${M[m]}</button>`).join('')}</div><div class="sm" style="margin:0 2px 10px">${R[gMode]}</div>
  <div class="card"><div class="ch"><b>전체 한눈에</b><span class="sm">종목을 눌러 켜고 끄기</span></div><div class="pick" id="ovp" style="margin:10px 0"></div><div id="ov"></div><div class="sm" id="ovn" style="margin-top:6px"></div></div>
  <h2>종목별 자세히</h2><div class="pick">${S.items.map(x=>`<button data-a="gi" data-i="${x.id}" class="${x.id===gItem?'on':''}">${esc(x.name)}</button>`).join('')}<button data-a="gi" data-i="kcal" class="${gItem==='kcal'?'on':''}">🔥 소모 칼로리</button></div>
- <div class="card" style="margin-top:10px"><div class="ch"><b>${M[gMode]} 그래프</b></div><div id="chart"></div><div class="stats" id="stats"></div></div>`}
+ <div class="card" style="margin-top:10px"><div class="ch"><b>${M[gMode]} 그래프</b></div><div id="chart"></div><div class="stats" id="stats"></div></div><div id="bpd"></div>`}
 
 function seriesOf(it,N){const out=[];
  for(let i=N-1;i>=0;i--){const b=bucket(gMode,i),e=b.keys.flatMap(k=>it.id==='kcal'?[kcalDay(k)]:allEnts(k,it));let v=null;
@@ -171,7 +171,7 @@ function drawChart(){
  const A=pts.map(p=>sum?p.e.reduce((a,v)=>a+v,0):av(p.e,v=>bp?v[0]:v));
  const B=bp?pts.map(p=>av(p.e,v=>v[1])):null;
  const W=340,H=210,L=34,R=8,T=16,Bt=24,pw=W-L-R,ph=H-T-Bt;
- const all=[...A,...(B||[])].filter(v=>v!=null);
+ let all=[...A,...(B||[])].filter(v=>v!=null);if(bp&&gMode==='day'&&pts.some(p=>p.e.length))all=pts.flatMap(p=>p.e.flatMap(v=>[v[0],v[1]]));
  let lo=0,hi=Math.max(1,...all);
  if(!sum&&all.length){lo=Math.min(...all);hi=Math.max(...all);const p=(hi-lo)*.25||hi*.1||1;lo=Math.max(0,lo-p);hi+=p}
  const X=i=>L+pw*(i+.5)/N,Y=v=>T+ph*(1-(v-lo)/(hi-lo));
@@ -185,10 +185,13 @@ function drawChart(){
  if(sum){const bw=pw/N*.62;A.forEach((v,i)=>{const y=Y(v);
   s+=`<rect class="bar" x="${X(i)-bw/2}" y="${y}" width="${bw}" height="${Math.max(0,T+ph-y)}" rx="3"/>`;
   if(v>0)s+=`<text class="v" x="${X(i)}" y="${y-3}" text-anchor="middle">${it.id==='kcal'?Math.round(v):fmt(v)}</text>`})}
+ else if(bp&&gMode==='day'){const P=[];pts.forEach((p,i)=>ord(p.e,true).forEach(([v])=>{const t=(v[2]||'12:00').split(':');P.push([L+pw*(i+((+t[0])*60+(+t[1]))/1440)/N,v[0],v[1]])}));
+  const pt=(q2,c)=>{let d='',dt='';P.forEach((q,i)=>{d+=(i?'L':'M')+q[0].toFixed(1)+' '+Y(q[q2]).toFixed(1);dt+=`<circle class="${c==='l1'?'c1':'c2'}" cx="${q[0]}" cy="${Y(q[q2])}" r="2.5"/>`+(P.length<=16?`<text class="v" x="${q[0]}" y="${Y(q[q2])+(q2===1?-6:12)}" text-anchor="middle">${q[q2]}</text>`:'')});return`<path class="${c}" d="${d}"/>${dt}`};
+  s+=pt(1,'l1')+pt(2,'l2')}
  else if(bp)s+=line(A,'l1',-7)+line(B,'l2',13);
  else s+=line(A,'l1',-7);
  s+='</svg>';
- if(bp)s+=`<div class="sm" style="text-align:center"><span style="color:var(--ac)">●</span> 고(수축기) &nbsp; <span style="color:var(--ac2)">●</span> 저(이완기)</div>`;
+ if(bp)s+=`<div class="sm" style="text-align:center"><span style="color:var(--ac)">●</span> 고(수축기) &nbsp; <span style="color:var(--ac2)">●</span> 저(이완기)${gMode==='day'?'<br>하루에 여러 번 잰 값은 측정 시각 순서대로 이어져요':''}</div>`;
  $('#chart').innerHTML=s;
  const u=esc(it.unit),per={day:'일',week:'주',month:'월'}[gMode];let st;
  if(sum){const t=A.reduce((a,v)=>a+v,0),F=it.id==='kcal'?Math.round:fmt;st=[['기간 합계',F(t)+u],[per+'평균',F(t/N)+u],['최고',F(Math.max(...A))+u]];
@@ -197,7 +200,7 @@ function drawChart(){
  else if(bp){const a=A.filter(v=>v!=null),b=B.filter(v=>v!=null);
   st=[['평균',Math.round(a.reduce((x,y)=>x+y,0)/a.length)+'/'+Math.round(b.reduce((x,y)=>x+y,0)/b.length)],['최고 수축기',Math.round(Math.max(...a))],['최저 이완기',Math.round(Math.min(...b))]]}
  else{const a=A.filter(v=>v!=null);st=[['평균',fv(it,a.reduce((x,y)=>x+y,0)/a.length)+u],['최저',fv(it,Math.min(...a))+u],['최고',fv(it,Math.max(...a))+u]]}
- $('#stats').innerHTML=st.map(x=>`<div><b>${x[1]}</b><span>${x[0]}</span></div>`).join('')}
+ $('#stats').innerHTML=st.map(x=>`<div><b>${x[1]}</b><span>${x[0]}</span></div>`).join('');drawBpDay(it)}
 
 let ad={t:'rep',n:'',u:'',m:5,h:1,k:'',lr:false};
 function capAd(){const g=i=>document.querySelector('#'+i);if(g('nn'))ad.n=g('nn').value;if(g('nu'))ad.u=g('nu').value;if(g('nc'))ad.k=g('nc').value;if(g('nm'))ad.m=+g('nm').value;if(g('nh'))ad.h=+g('nh').value;if(g('nl'))ad.lr=g('nl').checked}
@@ -209,6 +212,17 @@ function addForm(){const t=ad.t;
  if(t==='avg'||t==='oth')f+=`<input id="nu" placeholder="단위 (예: kg, bpm, 분)" value="${esc(ad.u)}">`;
  if(t==='oth')f+=`<input id="nc" inputmode="decimal" placeholder="1단위당 소모 kcal (선택)" value="${esc(ad.k)}">`;
  return`<h2>종목 추가</h2><div class="card"><div style="display:grid;gap:10px"><div class="pick">${[['rep','횟수형'],['walk','걷기'],['run','러닝'],['avg','측정값'],['oth','기타']].map(x=>`<button data-a="atype" data-t="${x[0]}" class="${t===x[0]?'on':''}">${x[1]}</button>`).join('')}</div><div class="sm">${D[t]}</div>${f}<button class="p" data-a="additem">종목 추가</button></div></div>`}
+function drawBpDay(it){const el=$('#bpd');if(!el)return;
+ if(it.kind!=='bp'){el.innerHTML='';return}
+ const dd=dk(date),e=ord(ents(dd,it.id),true).map(x=>x[0]);
+ if(!e.length){el.innerHTML=`<div class="card"><div class="ch"><b>${fmtDate(date)} 혈압</b></div><p class="mu" style="margin:8px 0 0">이 날 기록이 없어요</p></div>`;return}
+ const W=340,H=190,L=30,R=16,T=18,Bt=30,pw=W-L-R,ph=H-T-Bt,n=e.length,X=i=>n===1?L+pw/2:L+pw*i/(n-1);
+ const vs=e.flatMap(v=>[v[0],v[1]]);let lo=Math.min(...vs),hi=Math.max(...vs);const pd=(hi-lo)*.25||10;lo=Math.max(0,lo-pd);hi+=pd;const Y=v=>T+ph*(1-(v-lo)/(hi-lo));
+ let s=`<svg viewBox="0 0 ${W} ${H}">`+[0,.5,1].map(f=>`<line class="gl" x1="${L}" x2="${W-R}" y1="${T+ph*f}" y2="${T+ph*f}"/><text x="${L-4}" y="${T+ph*(1-f)+3}" text-anchor="end">${Math.round(lo+(hi-lo)*f)}</text>`).join('');
+ [1,2].forEach(q=>{const d=e.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v[q-1]).toFixed(1)).join('');
+  s+=`<path class="${q===1?'l1':'l2'}" d="${d}"/>`+e.map((v,i)=>`<circle class="${q===1?'c1':'c2'}" cx="${X(i)}" cy="${Y(v[q-1])}" r="3"/><text class="v" x="${X(i)}" y="${Y(v[q-1])+(q===1?-7:14)}" text-anchor="middle">${v[q-1]}</text>`).join('')});
+ e.forEach((v,i)=>{s+=`<text x="${X(i)}" y="${H-10}" text-anchor="middle">${v[2]||'-'}</text>`});
+ el.innerHTML=`<div class="card"><div class="ch"><b>${fmtDate(date)} 혈압 (시간순)</b><span class="sm">${n}회</span></div>${s}</svg></div>`}
 function setView(){
  let h=`<h2>내 종목</h2><div class="card">`;
  h+=S.items.length?S.items.map(x=>`<div class="item"><div><b>${esc(x.name)}</b><div class="sm">${x.cd?'유산소':KIND[x.kind]}${x.kind==='bp'||x.cd?(x.unit?' · 단위 '+esc(x.unit):''):` · 단위 <input data-u="${x.id}" value="${esc(x.unit)}" style="width:64px;padding:3px 8px;font-size:14px">`}</div>${x.cd?`<div class="sm" style="margin-top:6px">유산소(${x.cd==='run'?'러닝':'걷기'}) · 속도·시간 입력, 칼로리 자동 계산</div>`:x.kind==='sum'?`<div class="sm" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">강도 <select data-met="${x.id}" style="width:auto;padding:5px 8px">${(x.tm?METT:METS).map(m=>`<option value="${m[0]}"${m[0]===(x.met||0)?' selected':''}>${m[1]}</option>`).join('')}</select>${x.met>0?(x.tm?'':` 기본 유지 <select data-h="${x.id}" style="width:auto;padding:5px 8px">${HS.map(h=>`<option value="${h}"${h===(x.hold||0)?' selected':''}>${h}초</option>`).join('')}</select>`):` 1${esc(x.unit)}당 <input data-k="${x.id}" inputmode="decimal" value="${x.kcal||''}" placeholder="0" style="width:70px;padding:6px 8px"> kcal`}</div>${x.tm?'':`<label class="sm" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" data-lr="${x.id}" ${x.lr?'checked':''} style="width:18px;height:18px;padding:0"> 좌/우 나눠서 기록</label>`}`:''}</div><button class="d" data-a="delitem" data-i="${x.id}">${pend===x.id?'정말 삭제? (기록도 삭제)':'삭제'}</button></div>`).join(''):'<span class="mu">종목이 없습니다.</span>';
